@@ -153,6 +153,15 @@ void MacReceiver(void *argument)
 		}
 		else
 		{
+			
+			if(dataPtr[CONTROL] == 0xFF)
+			{
+				//It's the token
+				// Put the same token right back into the PHYS_queue
+				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+			}
 			//Message is not for me
 			
 			//Get source
