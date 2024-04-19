@@ -11,20 +11,8 @@
 #include "main.h"
 
 
-//OFFSETS IN DATA FRAME
-#define CONTROL 0
-#define LENGTH 2
-#define DATA 3
-#define SOURCE 0
-#define DESTINATION 1
-#define SAPI_LENGTH 3
-#define READ 1
-#define ACK 1
-
-#define BYTE 8
-
 // CHECKSUM CALCULATOR
-uint8_t calculateChecksum(uint8_t* dataPtr)
+extern uint8_t calculateChecksum(uint8_t* dataPtr)
 {
 	uint8_t checksum = 0;
 		

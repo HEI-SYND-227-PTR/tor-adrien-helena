@@ -33,6 +33,20 @@
 #define CONTINUE					0x0				// for check return code halt
 
 //--------------------------------------------------------------------------------
+// OFFSETS IN DATA FRAME
+//--------------------------------------------------------------------------------
+#define CONTROL 0
+#define LENGTH 2
+#define DATA 3
+#define SOURCE 0
+#define DESTINATION 1
+#define SAPI_LENGTH 3
+#define READ 1
+#define ACK 1
+
+#define BYTE 8
+
+//--------------------------------------------------------------------------------
 // identifiers used in more the one file (thread)
 //--------------------------------------------------------------------------------
 extern GListener 	gl;
