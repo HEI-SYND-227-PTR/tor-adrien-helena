@@ -6,6 +6,15 @@
 #include "rtx_os.h"
 
 
+
+// Temporary message queue
+#define TEMP_Q_SIZE 8
+
+osMessageQueueId_t	queue_macS_temp_id;
+const osMessageQueueAttr_t mac_snd_temp_attr = {
+	.name = "MAC_SENDER_TEMP"
+};
+
 //////////////////////////////////////////////////////////////////////////////////
 // THREAD MAC SENDER
 //////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +25,7 @@ void MacSender(void *argument)
 	osStatus_t retCode;								// return error code
 	
 	uint8_t* tokenFrame;							// Points to the token frame
-	
+	queue_macS_temp_id = osMessageQueueNew(TEMP_Q_SIZE,sizeof(struct queueMsg_t),&mac_snd_temp_attr);  //Temporary message queue
 	//------------------------------------------------------------------------------
 	for (;;)														// loop until doomsday
 	{
@@ -59,6 +68,16 @@ void MacSender(void *argument)
 					osWaitForever);
 			  CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 			break;
+			case (TOKEN):
+				// Got the token
+				
+				// FOR TESTING
+				// Put the same token right back into the PHYS_queue
+				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+
+			break;
 			/*
 			case (START):
 			break;
@@ -66,8 +85,7 @@ void MacSender(void *argument)
 			break;
 			case (DATA_IND):
 			break;
-			case (TOKEN):
-			break;
+
 			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
 			break;
 			default:

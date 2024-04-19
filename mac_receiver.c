@@ -149,37 +149,53 @@ void MacReceiver(void *argument)
 			else
 			{
 				//Data corrupted
+				// ACK = 0, R = 1 -> put into MAC_S Queue
 			}
 		}
 		else
 		{
-			
-			if(dataPtr[CONTROL] == 0xFF)
-			{
-				//It's the token
-				// Put the same token right back into the PHYS_queue
-				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
-				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-			}
 			//Message is not for me
-			
+				
 			//Get source
 			uint8_t source = dataPtr[CONTROL + SOURCE];
 			source = (source >> SAPI_LENGTH);
 			
-			if(source == MYADDRESS)
+			if(dataPtr[CONTROL] == 0xFF)
 			{
-				//Message is from me
+				//It's the token
 				
-				//This is either an ack, nack or exactly same message
+				/* FOR TESTING 
+					Put the same token right back into the PHYS_queue
+				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				*/
+				
+				//Give the token to MAC_Sender
+				queueMsg.type = TOKEN;
+				osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				
+			}
+			
+			else if(source == MYADDRESS)
+			{
+				//Message is from me: it's a DATABACK
+				//Don't the modify the data!
+				
+				//Give the token to MAC_Sender
+				queueMsg.type = DATABACK;
+				osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 			}
 			else
 			{
 				//Message is for another station
-				queueMsg.type = TO_PHY;
 				
 				// Put into PHY SENDER queue
+				queueMsg.type = TO_PHY;
 				retCode = osMessageQueuePut(
 				queue_phyS_id,
 				&queueMsg,
