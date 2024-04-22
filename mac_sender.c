@@ -7,15 +7,7 @@
 
 extern uint8_t calculateChecksum(uint8_t* dataPtr);
 
-// Temporary message queue
-#define TEMP_Q_SIZE 8
 
-//Resend of a frame
-#define RETRY_SEND 3
-
-//Read, ack masks
-const uint8_t READ_MASK = 0x02;
-const uint8_t ACK_MASK = 0x01;
 
 osMessageQueueId_t	queue_macS_temp_id;
 const osMessageQueueAttr_t mac_snd_temp_attr = {
@@ -23,6 +15,7 @@ const osMessageQueueAttr_t mac_snd_temp_attr = {
 };
 
 
+//TO DO: modifiy parameter to either a queueMsg ptr or just give the needed values
 uint8_t* buildFrame(const struct queueMsg_t queueMsg)
 {
 	// Get some memory space
@@ -117,6 +110,7 @@ void MacSender(void *argument)
 				gotToken = false;
 			break;
 			case (TOKEN):
+			{
 				// Got the token
 				gotToken = true;
 				
@@ -187,9 +181,19 @@ void MacSender(void *argument)
 					//No messages to send
 					
 					//Update sapi list
-					uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr; //TO CHECK IF + MYADDRESS IS CORRECT 
+					uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr;
 					mySapis += MYADDRESS;
-					*mySapis = 0x0A; // sapi 1 and 3 are actif !
+					
+					if(gTokenInterface.connected)
+					{
+						//CHAT Sapi is available
+							*mySapis = CHAT_TIME_ACTIVE; 
+					}
+					else
+					{
+						//CHAT Sapi is not available
+						*mySapis = TIME_ACTIVE;
+					}
 					
 					// Reinject the token
 					queueMsg.type = TO_PHY;
@@ -201,13 +205,7 @@ void MacSender(void *argument)
 					waitDataback = false;
 					gotToken= false;
 				}
-				
-				/* FOR TESTING
-				// Put the same token right back into the PHYS_queue
-				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
-				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-				*/
+			}
 			break;
 			
 			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
@@ -222,14 +220,14 @@ void MacSender(void *argument)
 				status += (DATA + length);
 				
 				//Get Read, Ack
-				uint8_t read = *(status)&(READ_MASK);
-				uint8_t ack = *(status)&(ACK_MASK);
+				uint8_t read = *(status)&(READ_SET);
+				uint8_t ack = *(status)&(ACK_SET);
 				
-				if(read == READ_MASK)
+				if(read == READ_SET)
 				{
 					// R = 1 : message was read
 					
-					if(ack == ACK_MASK)
+					if(ack == ACK_SET)
 					{
 						// Data wasn't corrupted
 						
@@ -246,16 +244,18 @@ void MacSender(void *argument)
 						waitDataback = false;
 						gotToken= false;
 					}
+					else
+					{
+						//ack= 0: checksum was wrong
+					}
 				}
 				else
 				{
-					
-					
+					// R = 0: message wasn't read
 				}
 			}
 			break;
 			
-				
 			case (DATA_IND):
 			{
 				//Put into temp queue
@@ -267,14 +267,20 @@ void MacSender(void *argument)
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 			}
-				
 			break;
-			/*
+			
 			case (START):
+			{
+					gTokenInterface.connected = true;
+			}				
 			break;
 			case (STOP):
+			{
+				gTokenInterface.connected = false;
+			}
 			break;
-
+			
+			/*
 			default:
 			break;
 			*/

@@ -46,6 +46,21 @@
 
 #define BYTE 8
 
+// Temporary message queue
+#define TEMP_Q_SIZE 8
+
+//Resend of a frame
+#define RETRY_SEND 3
+
+//Activate SAPIS
+#define CHAT_TIME_ACTIVE 0x0A
+#define TIME_ACTIVE 0x02
+
+//Read, ack masks
+#define READ_SET 0x02
+#define ACK_SET 0x01
+
+
 //--------------------------------------------------------------------------------
 // identifiers used in more the one file (thread)
 //--------------------------------------------------------------------------------

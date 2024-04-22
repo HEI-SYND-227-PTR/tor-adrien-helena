@@ -78,7 +78,8 @@ void MacReceiver(void *argument)
 		uint8_t checksum = dataPtr[DATA + length];
 		checksum = (checksum >> (READ + ACK));
 				
-		if(destination == MYADDRESS)
+			
+		if((destination == MYADDRESS) || (destination == BROADCAST_ADDRESS))
 		{
 			// Message is for me
 			
@@ -92,49 +93,93 @@ void MacReceiver(void *argument)
 				//Allocate new memory for the user data
 				uint8_t * userData = osMemoryPoolAlloc(memPool, osWaitForever);
 				
-				//for loop to transit the data from the frame
-				for(int i = 0; i < length; i++)
-				{
-					*(userData+i) = *(dataPtr+DATA+i);
-				}
+				//Transit the raw data into new mem block
+				memcpy(userData, dataPtr+DATA, length);
 				
+				//Temporary msg queue ID, will be selected in the switch case
 				osMessageQueueId_t msgQ_id_temp;
 				
 				//Which SAPI ?
 				switch (destSapi)
 				{
-					//Select app queue 
+					//Select app queue
 					//Update queueMsg type
 					case CHAT_SAPI:
-						msgQ_id_temp = queue_chatR_id;
-						queueMsg.type = DATA_IND;
-						queueMsg.anyPtr = userData;
+						if(gTokenInterface.connected)
+						{
+							//Set received frame's ACK, READ
+							*(dataPtr + DATA + length) |= (READ_SET + ACK_SET);
+							
+							msgQ_id_temp = queue_chatR_id;
+							queueMsg.type = DATA_IND;
+							queueMsg.anyPtr = userData;
+						}
+						else
+						{
+							//CHAT Sapi is not active
+							//Leave R and ACK at 0
+							
+							//Send directly to PHY_S queue
+							//Don't modify the frame's ACK, READ
+							msgQ_id_temp = NULL;
+							
+						}
 					break;
 					case TIME_SAPI:
+						//Modify received frame's ACK, READ
+						*(dataPtr + DATA + length) |= (READ_SET + ACK_SET);
+					
+						//Modify frame's ACK, READ
 						msgQ_id_temp = queue_timeR_id;
 						queueMsg.type = DATA_IND;
 						queueMsg.anyPtr = userData;
 					break;
 					default:
 						// SAPI not recognized...
-						//PUT TO MAC SENDER QUEUE ?
+						//Put directly to PHY_S
+						msgQ_id_temp = NULL;
+						
 					break;
 				}
 				
-				// Put to right queue
-				osMessageQueuePut(msgQ_id_temp, &queueMsg , osPriorityNormal,
-					osWaitForever);
-				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				// Distribute to APP, if Sapi is really active
+				if(msgQ_id_temp != NULL)
+				{
+				
+					retCode = osMessageQueuePut(msgQ_id_temp, &queueMsg , osPriorityNormal,
+						osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				}
+				
+				
+				//Send same frame back to PHY_S, so the source gets DATABACK
+				queueMsg.type = TO_PHY;
+				queueMsg.anyPtr = dataPtr; //With R and A modified...
+				
+				retCode = osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+						osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				
+				
 			}
 			else
 			{
 				//Data corrupted
-				// ACK = 0, R = 1 -> put into MAC_S Queue
+				// ACK = 0, R = 1 -> put into PHY_S Queue
+				
+				//Modify received frame's READ, leave ACK at 0
+				queueMsg.type = TO_PHY;
+				*(dataPtr + DATA + length) |= (READ_SET);
+				
+				//Send frame directly back to source
+				retCode = osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+						osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 			}
 		}
 		else
 		{
-			//Message is not for me
+			//Message is not "really" for me
 				
 			//Get source
 			uint8_t source = dataPtr[CONTROL + SOURCE];
@@ -143,13 +188,6 @@ void MacReceiver(void *argument)
 			if(dataPtr[CONTROL] == 0xFF)
 			{
 				//It's the token
-				
-				/* FOR TESTING 
-					Put the same token right back into the PHYS_queue
-				osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
-				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-				*/
 				
 				//Give the token to MAC_Sender
 				queueMsg.type = TOKEN;
@@ -183,7 +221,7 @@ void MacReceiver(void *argument)
 				osPriorityNormal,
 				0);
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-				
+	
 			}
 		}
 	}
