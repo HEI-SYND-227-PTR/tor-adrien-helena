@@ -10,31 +10,22 @@
 #include <string.h>
 #include "main.h"
 
+#define LSB_MASK 0x3F
 
 // CHECKSUM CALCULATOR
 extern uint8_t calculateChecksum(uint8_t* dataPtr)
 {
 	uint8_t checksum = 0;
-		
-	//Get control
-	uint16_t control = (uint16_t) *(dataPtr+CONTROL);
-	
-	//Get length
-	uint8_t length = *(dataPtr+LENGTH); 
-	
-	//Start adding data to checksum
-	for(int i = 0; i < length; i++)
+
+	//Add all bytes together
+	for(int i = 0; i < dataPtr[LENGTH] + DATA; i++)
 	{
-		checksum += *(dataPtr+DATA+i);
+		checksum += (dataPtr[i]);
 	}
 	
-	checksum += control;
-	checksum += length;
+	//Mask the 6 LSB
+	return checksum & LSB_MASK;
 	
-	// only x LSB !
-	checksum = checksum >> (READ + ACK);
-	
-	return checksum;
 }
 
 // Because my sapi is less than a BYTE
@@ -90,6 +81,7 @@ void MacReceiver(void *argument)
 		if(destination == MYADDRESS)
 		{
 			// Message is for me
+			
 			if(calculateChecksum(dataPtr) == checksum)
 			{
 				//Checksum is correct
@@ -170,7 +162,8 @@ void MacReceiver(void *argument)
 			else if(source == MYADDRESS)
 			{
 				//Message is from me: it's a DATABACK
-				//Don't the modify the data!
+				//Don't modify the data!
+				//Don't check the checksum...
 				
 				//Give the token to MAC_Sender
 				queueMsg.type = DATABACK;
