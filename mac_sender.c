@@ -147,35 +147,6 @@ void MacSender(void *argument)
 					waitDataback = true;
 					
 				}
-				/* DONT DO THIS
-				else if(osMessageQueueGetCount(queue_macS_id) > 0)
-				{
-					//No messages in temp queue, but messages in MAC_S queue
-					retCode = osMessageQueueGet( 	
-					queue_macS_id,
-					&queueMsg,
-					NULL,
-					osWaitForever);
-					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					
-					//Build new frame in new mem block
-					framePtr = buildFrame(queueMsg);
-					
-					//Free old mem block
-					osMemoryPoolFree(memPool,queueMsg.anyPtr);
-					
-					//Link queueMsg to framePtr
-					queueMsg.anyPtr = framePtr;
-					
-					//Put into PHY_S queue
-					queueMsg.type = TO_PHY;
-					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
-					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					
-					//Wait for response
-					waitDataback = true;
-				}*/
 				else
 				{
 					//No messages to send
@@ -232,7 +203,7 @@ void MacSender(void *argument)
 						// Data wasn't corrupted
 						
 						//Free frame from mem pool
-						osMemoryPoolFree(memPool, framePtr);
+						osMemoryPoolFree(memPool, queueMsg.anyPtr);
 						
 						//Reinject the token
 						queueMsg.anyPtr = tokenFrame;
@@ -247,6 +218,31 @@ void MacSender(void *argument)
 					else
 					{
 						//ack= 0: checksum was wrong
+						
+						sentCounter++;
+						
+						if(sentCounter == RETRY_SEND)
+						{
+							//Stop sending... it's not worth it
+							
+							//Free the frame from mem pool
+							osMemoryPoolFree(memPool, queueMsg.anyPtr);
+							
+							//Reinject the token
+							queueMsg.anyPtr = tokenFrame;
+							queueMsg.type = TO_PHY;
+							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+							osWaitForever);
+							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+							gotToken = false;
+							
+							//Reset counter
+							sentCounter = 0;
+						}
+						else{
+							//RESENT FRAMEPTR, not the frame we just received.
+							//
+						}
 					}
 				}
 				else
