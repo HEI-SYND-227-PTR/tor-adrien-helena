@@ -185,7 +185,7 @@ void MacReceiver(void *argument)
 			uint8_t source = dataPtr[CONTROL + SOURCE];
 			source = (source >> SAPI_LENGTH);
 			
-			if(dataPtr[CONTROL] == 0xFF)
+			if(dataPtr[CONTROL] == TOKEN_TAG)
 			{
 				//It's the token
 				

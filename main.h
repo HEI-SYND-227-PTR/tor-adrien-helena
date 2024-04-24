@@ -43,6 +43,7 @@
 #define SAPI_LENGTH 3
 #define READ 1
 #define ACK 1
+#define STATUS_LEN 1
 
 #define BYTE 8
 

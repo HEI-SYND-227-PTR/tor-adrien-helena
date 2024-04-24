@@ -55,9 +55,11 @@ void MacSender(void *argument)
 	struct queueMsg_t queueMsg;				// queue message
 	char * stringPtr;									// string to send pointer
 	osStatus_t retCode;								// return error code
+	char * tokenPtr;
 	
-	uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
-	uint8_t* framePtr;
+//	uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
+	uint8_t* framePtr; // where the sent frame is saved until ACK = 1 and R = 1
+	uint8_t* copiedFramePtr; //always keep an orignal pointer, that won't be destroyed
 	
 	queue_macS_temp_id = osMessageQueueNew(TEMP_Q_SIZE,sizeof(struct queueMsg_t),&mac_snd_temp_attr);  //Temporary message queue
 	
@@ -81,7 +83,9 @@ void MacSender(void *argument)
 		switch(queueMsg.type)
 		{
 			case (NEW_TOKEN):
+			{
 				//Inject token into ring
+				uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
 				
 				gotToken = true;
 				//insert data into token frame
@@ -108,6 +112,7 @@ void MacSender(void *argument)
 			  CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 				gotToken = false;
+			}
 			break;
 			case (TOKEN):
 			{
@@ -115,7 +120,8 @@ void MacSender(void *argument)
 				gotToken = true;
 				
 				//copy token data into token memory block
-				memcpy(tokenFrame, queueMsg.anyPtr, TOKENSIZE-2); 
+				tokenPtr = queueMsg.anyPtr;
+				//memcpy(tokenFrame, queueMsg.anyPtr, TOKENSIZE-2); 
 				
 				// Are there any messages in temp queue ? 
 				if(osMessageQueueGetCount(queue_macS_temp_id) > 0)
@@ -128,15 +134,19 @@ void MacSender(void *argument)
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 					
-					//Build new frame in new mem block
+					//Build new frame in new mem block, keep this one to make copies!
 					framePtr = buildFrame(queueMsg);
 					
 					//Free old mem block
 					osMemoryPoolFree(memPool,queueMsg.anyPtr);
 					
-					//Link queueMsg to framePtr
-					queueMsg.anyPtr = framePtr;
-
+					//Make a copy of build message
+					copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
+					memcpy(copiedFramePtr, framePtr, (*(framePtr + LENGTH) + DATA + STATUS_LEN));
+					
+					//Send the copy
+					queueMsg.anyPtr = copiedFramePtr;
+					
 					//Put into PHY_S queue
 					queueMsg.type = TO_PHY;
 					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
@@ -200,13 +210,14 @@ void MacSender(void *argument)
 					
 					if(ack == ACK_SET)
 					{
+						// ACK = 1
 						// Data wasn't corrupted
 						
 						//Free frame from mem pool
 						osMemoryPoolFree(memPool, queueMsg.anyPtr);
 						
 						//Reinject the token
-						queueMsg.anyPtr = tokenFrame;
+						queueMsg.anyPtr = tokenPtr;
 						queueMsg.type = TO_PHY;
 						osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 						osWaitForever);
@@ -219,17 +230,24 @@ void MacSender(void *argument)
 					{
 						//ack= 0: checksum was wrong
 						
+						//Free the RECEIVED frame from mem pool
+						osMemoryPoolFree(memPool, queueMsg.anyPtr);
+						
+						
 						sentCounter++;
 						
 						if(sentCounter == RETRY_SEND)
 						{
 							//Stop sending... it's not worth it
 							
-							//Free the frame from mem pool
-							osMemoryPoolFree(memPool, queueMsg.anyPtr);
+							//Free the ORIGINAL frame pointer
+							if(framePtr != NULL)
+							{
+								osMemoryPoolFree(memPool, framePtr);
+							}
 							
 							//Reinject the token
-							queueMsg.anyPtr = tokenFrame;
+							queueMsg.anyPtr = tokenPtr;
 							queueMsg.type = TO_PHY;
 							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
@@ -240,8 +258,19 @@ void MacSender(void *argument)
 							sentCounter = 0;
 						}
 						else{
-							//RESENT FRAMEPTR, not the frame we just received.
-							//
+							//Resend copy of ORIGINAL frame pointer, not the RECEIVED frame
+							//Make a copy of build message (and keep this pointer! in case of needed resend)
+							copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
+							memcpy(copiedFramePtr, framePtr, *(framePtr + LENGTH) + DATA + STATUS_LEN);
+							
+							//Send COPY frame !
+							queueMsg.anyPtr = copiedFramePtr;
+
+							//Put into PHY_S queue
+							queueMsg.type = TO_PHY;
+							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+							osWaitForever);
+							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 						}
 					}
 				}
