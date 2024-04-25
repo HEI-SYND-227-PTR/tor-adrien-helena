@@ -8,6 +8,7 @@
 extern uint8_t calculateChecksum(uint8_t* dataPtr);
 
 
+const char* ERRORMSG = "MAC Error";
 
 osMessageQueueId_t	queue_macS_temp_id;
 const osMessageQueueAttr_t mac_snd_temp_attr = {
@@ -263,6 +264,19 @@ void MacSender(void *argument)
 								osMemoryPoolFree(memPool, framePtr);
 							}
 							
+							//Signal LCD of a MAC Error
+							char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
+							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+							
+							//Reuse queueMsg, adjust type and dataPtr
+							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+							queueMsg.type = MAC_ERROR;
+				
+							//Put to LCD_R Queue, it notifies the display of an error
+							retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+									osWaitForever);
+							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+							
 							//Reinject the token
 							queueMsg.anyPtr = tokenPtr;
 							queueMsg.type = TO_PHY;
@@ -303,7 +317,20 @@ void MacSender(void *argument)
 					{
 						osMemoryPoolFree(memPool, framePtr);
 					}
+					
+					//Signal LCD of a MAC Error
+					char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
+					memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
 							
+					//Reuse queueMsg, adjust type and dataPtr
+					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+					queueMsg.type = MAC_ERROR;
+				
+					//Put to LCD_R Queue, it notifies the display of an error
+					retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+							osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+					
 					//Reinject the token
 					queueMsg.anyPtr = tokenPtr;
 					queueMsg.type = TO_PHY;
