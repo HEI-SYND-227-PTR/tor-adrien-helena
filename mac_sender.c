@@ -119,9 +119,20 @@ void MacSender(void *argument)
 				// Got the token
 				gotToken = true;
 				
-				//copy token data into token memory block
+				//point to token data
 				tokenPtr = queueMsg.anyPtr;
-				//memcpy(tokenFrame, queueMsg.anyPtr, TOKENSIZE-2); 
+				
+				//Update global array of active stations
+				memcpy(gTokenInterface.station_list,(tokenPtr+TOKEN_DATA), TOKEN_DATA_SIZE);
+				
+				//Reuse queueMsg, adjust type and dataPtr
+				queueMsg.anyPtr = NULL; //no data to be transported for the LCD
+				queueMsg.type = TOKEN_LIST;
+				
+				//Put to LCD_R Queue, it notifies the display
+				retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+					osWaitForever);
+			  CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 				// Are there any messages in temp queue ? 
 				if(osMessageQueueGetCount(queue_macS_temp_id) > 0)
@@ -161,6 +172,9 @@ void MacSender(void *argument)
 				{
 					//No messages to send
 					
+					//Repoint to token with anyPtr
+					queueMsg.anyPtr = tokenPtr;
+					
 					//Update sapi list
 					uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr;
 					mySapis += MYADDRESS;
@@ -176,7 +190,8 @@ void MacSender(void *argument)
 						*mySapis = TIME_ACTIVE;
 					}
 					
-					// Reinject the token
+					//Reinject the token
+					//We have not modified the received data
 					queueMsg.type = TO_PHY;
 					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 					osWaitForever);

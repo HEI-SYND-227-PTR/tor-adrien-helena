@@ -45,6 +45,9 @@
 #define ACK 1
 #define STATUS_LEN 1
 
+#define TOKEN_DATA 1
+#define TOKEN_DATA_SIZE 16
+
 #define BYTE 8
 
 // Temporary message queue
