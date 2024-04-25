@@ -82,14 +82,16 @@ void MacReceiver(void *argument)
 		uint8_t checksum = dataPtr[DATA + length];
 		checksum = (checksum >> (READ + ACK));
 				
-			
+		//TO DO:
+		//Differentiate if I am the source of the Broadcast
+		// or if someone else is.
 		if((destination == MYADDRESS) || (destination == BROADCAST_ADDRESS))
 		{
 			// Message is for me
 			
-			if(calculateChecksum(dataPtr) == checksum)
+			if((destination == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == checksum))
 			{
-				//Checksum is correct
+				//Checksum is correct or not needed because it's a broadcast
 				
 				//Get destination sapi
 				uint8_t destSapi = getSapi(dataPtr[CONTROL + DESTINATION]);

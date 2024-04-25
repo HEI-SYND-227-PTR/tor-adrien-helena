@@ -8,7 +8,7 @@
 extern uint8_t calculateChecksum(uint8_t* dataPtr);
 
 
-const char* ERRORMSG = "MAC Error";
+const char* ERRORMSG = "MAC Error\n";
 
 osMessageQueueId_t	queue_macS_temp_id;
 const osMessageQueueAttr_t mac_snd_temp_attr = {
@@ -42,9 +42,21 @@ uint8_t* buildFrame(const struct queueMsg_t queueMsg)
 	//Set status
 	uint8_t status = 0;
 	uint8_t checksum = calculateChecksum(framePtr);
-	status = (checksum << (ACK + READ));//TO CHECK: Maybe ACK and READ are not at zero ?
-	*(framePtr+DATA+length) = status;
 	
+	//Check if it's for a broadcast
+	if(destination != BROADCAST_ADDRESS)
+	{
+		//Not a broadcast msg
+		status = (checksum << (ACK + READ));
+		*(framePtr+DATA+length) = status;
+	}
+	else
+	{
+		//A broadcast msg
+		status = (checksum << (ACK + READ));
+		status |= (READ_SET + ACK_SET); //Concat POSITIVE R,ACK
+		*(framePtr+DATA+length) = status;
+	}
 	return framePtr;
 }
 
@@ -207,46 +219,69 @@ void MacSender(void *argument)
 			
 			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
 			{
-				//ACK ? READ ? 
-				uint8_t* status = (uint8_t*) queueMsg.anyPtr;
-			
-				//Get length
-				uint8_t length = *(status+LENGTH);
+				//TO DO: check if I was the source of broadcast -> delete the frame
+				//else send it to next.
+				//Was it a broadcast?
+				//Get destination
+				uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;		
+				uint8_t destination = dataPtr[CONTROL + DESTINATION];
 				
-				//Point to status byte
-				status += (DATA + length);
-				
-				//Get Read, Ack
-				uint8_t read = *(status)&(READ_SET);
-				uint8_t ack = *(status)&(ACK_SET);
-				
-				//Free frame from mem pool
-				osMemoryPoolFree(memPool, queueMsg.anyPtr);
-				
-				if(read == READ_SET)
+				if(destination == BROADCAST_ADDRESS)
 				{
-					// R = 1 : message was read
+					//Stop sending... the broadcast is finished
 					
-					if(ack == ACK_SET)
+					//Free the ORIGINAL frame pointer
+					if(framePtr != NULL)
 					{
-						// ACK = 1
-						// Data wasn't corrupted
+						osMemoryPoolFree(memPool, framePtr);
+					}
+					
+					//Free frame from mem pool
+					osMemoryPoolFree(memPool, queueMsg.anyPtr);
+				}
+				else
+				{
+					//It wasn't a broadcast
+					//ACK ? READ ? 
+					uint8_t* status = (uint8_t*) queueMsg.anyPtr;
+				
+					//Get length
+					uint8_t length = *(status+LENGTH);
+					
+					//Point to status byte
+					status += (DATA + length);
+					
+					//Get Read, Ack
+					uint8_t read = *(status)&(READ_SET);
+					uint8_t ack = *(status)&(ACK_SET);
+					
+					//Free frame from mem pool
+					osMemoryPoolFree(memPool, queueMsg.anyPtr);
+					
+					if(read == READ_SET)
+					{
+						// R = 1 : message was read
 						
-						//Free the ORIGINAL frame pointer
-						if(framePtr != NULL)
+						if(ack == ACK_SET)
 						{
-							osMemoryPoolFree(memPool, framePtr);
-						}
-						
-						//Reinject the token
-						queueMsg.anyPtr = tokenPtr;
-						queueMsg.type = TO_PHY;
-						osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-						osWaitForever);
-						CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-						
-						waitDataback = false;
-						gotToken= false;
+							// ACK = 1
+							// Data wasn't corrupted
+							
+							//Free the ORIGINAL frame pointer
+							if(framePtr != NULL)
+							{
+								osMemoryPoolFree(memPool, framePtr);
+							}
+							
+							//Reinject the token
+							queueMsg.anyPtr = tokenPtr;
+							queueMsg.type = TO_PHY;
+							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+							osWaitForever);
+							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+							
+							waitDataback = false;
+							gotToken= false;
 					}
 					else
 					{
@@ -339,6 +374,7 @@ void MacSender(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 					gotToken = false;
 				}
+			}
 			}
 			break;
 			
