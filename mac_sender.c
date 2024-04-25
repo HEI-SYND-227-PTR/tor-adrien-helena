@@ -204,6 +204,9 @@ void MacSender(void *argument)
 				uint8_t read = *(status)&(READ_SET);
 				uint8_t ack = *(status)&(ACK_SET);
 				
+				//Free frame from mem pool
+				osMemoryPoolFree(memPool, queueMsg.anyPtr);
+				
 				if(read == READ_SET)
 				{
 					// R = 1 : message was read
@@ -213,8 +216,11 @@ void MacSender(void *argument)
 						// ACK = 1
 						// Data wasn't corrupted
 						
-						//Free frame from mem pool
-						osMemoryPoolFree(memPool, queueMsg.anyPtr);
+						//Free the ORIGINAL frame pointer
+						if(framePtr != NULL)
+						{
+							osMemoryPoolFree(memPool, framePtr);
+						}
 						
 						//Reinject the token
 						queueMsg.anyPtr = tokenPtr;
@@ -229,10 +235,6 @@ void MacSender(void *argument)
 					else
 					{
 						//ack= 0: checksum was wrong
-						
-						//Free the RECEIVED frame from mem pool
-						osMemoryPoolFree(memPool, queueMsg.anyPtr);
-						
 						
 						sentCounter++;
 						
@@ -257,7 +259,8 @@ void MacSender(void *argument)
 							//Reset counter
 							sentCounter = 0;
 						}
-						else{
+						else
+						{
 							//Resend copy of ORIGINAL frame pointer, not the RECEIVED frame
 							//Make a copy of build message (and keep this pointer! in case of needed resend)
 							copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
@@ -277,6 +280,22 @@ void MacSender(void *argument)
 				else
 				{
 					// R = 0: message wasn't read
+					
+					//Stop sending... it's not worth it
+							
+					//Free the ORIGINAL frame pointer
+					if(framePtr != NULL)
+					{
+						osMemoryPoolFree(memPool, framePtr);
+					}
+							
+					//Reinject the token
+					queueMsg.anyPtr = tokenPtr;
+					queueMsg.type = TO_PHY;
+					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+					gotToken = false;
 				}
 			}
 			break;
