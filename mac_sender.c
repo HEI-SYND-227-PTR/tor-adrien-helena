@@ -8,7 +8,7 @@
 extern uint8_t calculateChecksum(uint8_t* dataPtr);
 
 
-const char* ERRORMSG = "MAC Error\n";
+const char* ERRORMSG = "MAC Error";
 
 osMessageQueueId_t	queue_macS_temp_id;
 const osMessageQueueAttr_t mac_snd_temp_attr = {
@@ -219,16 +219,15 @@ void MacSender(void *argument)
 			
 			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
 			{
-				//TO DO: check if I was the source of broadcast -> delete the frame
-				//else send it to next.
+							
 				//Was it a broadcast?
 				//Get destination
 				uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;		
-				uint8_t destination = dataPtr[CONTROL + DESTINATION];
+				uint8_t destination = (dataPtr[CONTROL + DESTINATION] >> SAPI_LENGTH);
 				
 				if(destination == BROADCAST_ADDRESS)
 				{
-					//Stop sending... the broadcast is finished
+					//Stop sending... the broadcast has gone trough the ring
 					
 					//Free the ORIGINAL frame pointer
 					if(framePtr != NULL)
@@ -236,12 +235,21 @@ void MacSender(void *argument)
 						osMemoryPoolFree(memPool, framePtr);
 					}
 					
-					//Free frame from mem pool
+					//Free RECEIVED frame from mem pool
 					osMemoryPoolFree(memPool, queueMsg.anyPtr);
+					
+					//Reinject the token
+					queueMsg.anyPtr = tokenPtr;
+					queueMsg.type = TO_PHY;
+					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+					osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+					gotToken = false;
 				}
 				else
 				{
 					//It wasn't a broadcast
+					
 					//ACK ? READ ? 
 					uint8_t* status = (uint8_t*) queueMsg.anyPtr;
 				
@@ -293,24 +301,25 @@ void MacSender(void *argument)
 						{
 							//Stop sending... it's not worth it
 							
+							
+							//Signal LCD of a MAC Error
+							char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
+//							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+								strcpy(errorMsg, ERRORMSG);
+							//Reuse queueMsg, adjust type and dataPtr
+							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+							queueMsg.type = MAC_ERROR;
+				      queueMsg.addr = framePtr[SOURCE] >> SAPI_LENGTH;
+							//Put to LCD_R Queue, it notifies the display of an error
+							retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+									osWaitForever);
+							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+
 							//Free the ORIGINAL frame pointer
 							if(framePtr != NULL)
 							{
 								osMemoryPoolFree(memPool, framePtr);
 							}
-							
-							//Signal LCD of a MAC Error
-							char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-							
-							//Reuse queueMsg, adjust type and dataPtr
-							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
-							queueMsg.type = MAC_ERROR;
-				
-							//Put to LCD_R Queue, it notifies the display of an error
-							retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
-									osWaitForever);
-							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 							
 							//Reinject the token
 							queueMsg.anyPtr = tokenPtr;
@@ -347,16 +356,16 @@ void MacSender(void *argument)
 					
 					//Stop sending... it's not worth it
 							
-					//Free the ORIGINAL frame pointer
-					if(framePtr != NULL)
-					{
-						osMemoryPoolFree(memPool, framePtr);
-					}
 					
 					//Signal LCD of a MAC Error
 					char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-					memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-							
+//							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+//								strcpy(errorMsg, ERRORMSG);
+							//Reuse queueMsg, adjust type and dataPtr
+							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+							queueMsg.type = MAC_ERROR;
+				      uint8_t source = framePtr[SOURCE] >> SAPI_LENGTH;
+					sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",source);
 					//Reuse queueMsg, adjust type and dataPtr
 					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 					queueMsg.type = MAC_ERROR;
@@ -365,6 +374,11 @@ void MacSender(void *argument)
 					retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
 							osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+					//Free the ORIGINAL frame pointer
+					if(framePtr != NULL)
+					{
+						osMemoryPoolFree(memPool, framePtr);
+					}
 					
 					//Reinject the token
 					queueMsg.anyPtr = tokenPtr;
@@ -384,8 +398,12 @@ void MacSender(void *argument)
 				//Temp queue is BIGGER
 				//Temp queue contains only the raw data
 				
-				osMessageQueuePut(queue_macS_temp_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
+				retCode = osMessageQueuePut(queue_macS_temp_id, &queueMsg , osPriorityNormal,
+					0);
+				if(retCode != osOK)
+				{
+					osMemoryPoolFree(memPool,queueMsg.anyPtr);
+				}
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 			}

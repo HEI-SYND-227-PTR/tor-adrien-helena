@@ -82,14 +82,10 @@ void MacReceiver(void *argument)
 		uint8_t checksum = dataPtr[DATA + length];
 		checksum = (checksum >> (READ + ACK));
 				
-		//TO DO:
-		//Differentiate if I am the source of the Broadcast
-		// or if someone else is.
 		if((destination == MYADDRESS) || (destination == BROADCAST_ADDRESS))
 		{
-			// Message is for me
-			
-			if((destination == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == checksum))
+			// Message is for me	
+			if((destination == BROADCAST_ADDRESS) || calculateChecksum(dataPtr) == checksum)
 			{
 				//Checksum is correct or not needed because it's a broadcast
 				
@@ -125,6 +121,7 @@ void MacReceiver(void *argument)
 							msgQ_id_temp = queue_chatR_id;
 							queueMsg.type = DATA_IND;
 							queueMsg.anyPtr = userData;
+							queueMsg.addr= source;
 						}
 						else
 						{
@@ -180,7 +177,7 @@ void MacReceiver(void *argument)
 					//Send same frame back to PHY_S, so the source gets DATABACK
 					queueMsg.type = TO_PHY;
 					queueMsg.anyPtr = dataPtr; //With R and A modified...
-				
+							
 					retCode = osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
@@ -192,7 +189,9 @@ void MacReceiver(void *argument)
 					//Send same frame back to MAC_S, myself gets DATABACK
 					queueMsg.type = DATABACK;
 					queueMsg.anyPtr = dataPtr; //With R and A modified...
-				
+					
+					//If it was a broadcast, force R,A = 1
+					
 					retCode = osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);

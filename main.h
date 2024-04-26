@@ -51,7 +51,7 @@
 #define BYTE 8
 
 // Temporary message queue
-#define TEMP_Q_SIZE 8
+#define TEMP_Q_SIZE 4
 
 //Resend of a frame
 #define RETRY_SEND 3
