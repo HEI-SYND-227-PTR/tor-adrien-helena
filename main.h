@@ -60,10 +60,15 @@
 #define CHAT_TIME_ACTIVE 0x0A
 #define TIME_ACTIVE 0x02
 
-//Read, ack masks
+//--------------------------------------------------------------------------------
+// MASKS
+//--------------------------------------------------------------------------------
 #define READ_SET 0x02
 #define ACK_SET 0x01
 #define SAPI_MASK 0x07
+#define LSB_MASK 0x3F
+#define STATION_MASK 0x78
+#define CHECKSUM_MASK 0xFC
 
 //--------------------------------------------------------------------------------
 // identifiers used in more the one file (thread)

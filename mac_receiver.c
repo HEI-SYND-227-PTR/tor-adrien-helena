@@ -10,7 +10,28 @@
 #include <string.h>
 #include "main.h"
 
-#define LSB_MASK 0x3F
+typedef struct DataFrame_
+{
+	//Source
+	uint8_t sourceStation;
+	uint8_t sourceSapi;
+	
+	//Destination
+	uint8_t destStation;
+	uint8_t destSapi;
+	
+	//Length
+	uint8_t length;
+	
+	//Data
+	uint8_t* userData;
+	
+	//Status
+	uint8_t checksum;
+	uint8_t read;
+	uint8_t ack;
+	
+} DataFrame;
 
 //CHECKSUM CALCULATOR
 extern uint8_t calculateChecksum(uint8_t* dataPtr)
@@ -28,12 +49,35 @@ extern uint8_t calculateChecksum(uint8_t* dataPtr)
 	
 }
 
-//Because my sapi is less than a BYTE
+//SAPI getter
 uint8_t getSapi(uint8_t controlByte)
 {
 	uint8_t sapi = controlByte & SAPI_MASK;
 	
 	return sapi;
+}
+
+//Set DataFrame
+void setDataFrame(DataFrame* dataFrame, uint8_t* anyPtr)
+{
+	//Destination
+	dataFrame->destStation = (anyPtr[CONTROL + DESTINATION] & STATION_MASK) >> SAPI_LENGTH;
+	dataFrame->destSapi = anyPtr[CONTROL + DESTINATION] & SAPI_MASK;
+	
+	//Source
+	dataFrame->sourceStation = (anyPtr[CONTROL + SOURCE] & STATION_MASK) >> SAPI_LENGTH;
+	dataFrame->sourceSapi = anyPtr[CONTROL + SOURCE] & SAPI_MASK;
+
+	//Length 
+	dataFrame->length = anyPtr[LENGTH];
+
+	//Data
+	dataFrame->userData = anyPtr + DATA + dataFrame->length;
+
+	//Status
+	dataFrame->checksum = (anyPtr[DATA + dataFrame->length] & CHECKSUM_MASK) >> (ACK + READ);
+	dataFrame->read = (anyPtr[DATA + dataFrame->length] & READ_SET) >> READ;
+	dataFrame->ack = anyPtr[DATA + dataFrame->length] & ACK_SET;	
 }
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +88,8 @@ void MacReceiver(void *argument)
 	// Retrieve Data from MACRec_Q
 	struct queueMsg_t queueMsg;							// queue message
 	osStatus_t retCode;											// return error code
+	
+	DataFrame dataFrame;										//Contains the data frame information
 	
 	// Put data into APP_Queues
 	for (;;)																// loop until doomsday
@@ -63,6 +109,8 @@ void MacReceiver(void *argument)
 		// UNWARP THE DATA...
 		//----------------------------------------------------------------------------		
 		
+		
+		
 		//Get data frame pointer, slice it into bytes
 		uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;
 		
@@ -75,16 +123,19 @@ void MacReceiver(void *argument)
 		source = (source >> SAPI_LENGTH);
 		
 		//Get nb of bytes of data
-		uint8_t length = dataPtr[LENGTH]; //nb of data bytes
+		uint8_t length = dataPtr[LENGTH];
 		
 		//Get checksum of frame
 		uint8_t checksum = dataPtr[DATA + length];
 		checksum = (checksum >> (READ + ACK));
+		
+		setDataFrame(&dataFrame, (uint8_t*) queueMsg.anyPtr);
 				
 		if((destination == MYADDRESS) || (destination == BROADCAST_ADDRESS))
 		{
-			// Message is for me	
-			if((destination == BROADCAST_ADDRESS) || calculateChecksum(dataPtr) == checksum)
+			// Message is for me
+			
+			if((destination == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == checksum))
 			{
 				//Checksum is correct or not needed because it's a broadcast
 				
