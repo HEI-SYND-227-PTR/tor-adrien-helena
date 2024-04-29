@@ -12,7 +12,7 @@
 
 #define LSB_MASK 0x3F
 
-// CHECKSUM CALCULATOR
+//CHECKSUM CALCULATOR
 extern uint8_t calculateChecksum(uint8_t* dataPtr)
 {
 	uint8_t checksum = 0;
@@ -28,11 +28,10 @@ extern uint8_t calculateChecksum(uint8_t* dataPtr)
 	
 }
 
-// Because my sapi is less than a BYTE
-uint8_t getSapi(uint8_t sapi)
+//Because my sapi is less than a BYTE
+uint8_t getSapi(uint8_t controlByte)
 {
-	sapi = (sapi << (BYTE - SAPI_LENGTH));
-	sapi = (sapi >> (BYTE -SAPI_LENGTH));
+	uint8_t sapi = controlByte & SAPI_MASK;
 	
 	return sapi;
 }

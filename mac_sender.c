@@ -394,13 +394,13 @@ void MacSender(void *argument)
 					
 					//Signal LCD of a MAC Error
 					char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-//							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-//								strcpy(errorMsg, ERRORMSG);
-							//Reuse queueMsg, adjust type and dataPtr
-							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
-							queueMsg.type = MAC_ERROR;
-				      uint8_t source = framePtr[SOURCE] >> SAPI_LENGTH;
-					sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",source);
+					//memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+					//strcpy(errorMsg, ERRORMSG);
+					//Reuse queueMsg, adjust type and dataPtr
+					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+					queueMsg.type = MAC_ERROR;
+					//uint8_t destination = framePtr[DESTINATION] >> SAPI_LENGTH;
+					sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",(destination+1));
 					//Reuse queueMsg, adjust type and dataPtr
 					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 					queueMsg.type = MAC_ERROR;

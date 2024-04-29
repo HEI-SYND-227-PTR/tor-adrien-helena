@@ -16,7 +16,7 @@
 //--------------------------------------------------------------------------------
 // Constants to change the system behavior
 //--------------------------------------------------------------------------------
-#define DEBUG_MODE				0					// mode is physical line (0) or debug (1)
+#define DEBUG_MODE				1					// mode is physical line (0) or debug (1)
 #define MYADDRESS   			6					// your address choice (table number)
 #define MAX_BLOCK_SIZE 		100				// size max for a frame
 
@@ -63,7 +63,7 @@
 //Read, ack masks
 #define READ_SET 0x02
 #define ACK_SET 0x01
-
+#define SAPI_MASK 0x07
 
 //--------------------------------------------------------------------------------
 // identifiers used in more the one file (thread)
