@@ -114,11 +114,12 @@ void MacSender(void *argument)
 				//My station's byte has SAPIs 1 & 3 
 				//ATTENTION: BINARY WON'T WORK
 
-				*(tokenFrame + MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
+				*(tokenFrame + TOKEN_DATA+ MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
 					
 				if(gTokenInterface.connected)
 				{
-					*(tokenFrame + MYADDRESS) |= (0x01 << CHAT_SAPI);
+					//Add the CHAT Sapi
+					*(tokenFrame + TOKEN_DATA + MYADDRESS) |= (0x01 << CHAT_SAPI);
 				}
 				
 				//Reuse queueMsg, adjust type and dataPtr
@@ -142,15 +143,15 @@ void MacSender(void *argument)
 				tokenPtr = queueMsg.anyPtr;
 				
 				//Update MY station in the token frame anyways !
-				*(tokenPtr + MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
+				*(tokenPtr + TOKEN_DATA + MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
 					
 				if(gTokenInterface.connected)
 				{
-					*(tokenPtr + MYADDRESS) |= (0x01 << CHAT_SAPI);
+					*(tokenPtr + TOKEN_DATA + MYADDRESS) |= (0x01 << CHAT_SAPI);
 				}
 				else
 				{
-					*(tokenPtr + MYADDRESS) &= (0x00 << CHAT_SAPI);
+					*(tokenPtr + TOKEN_DATA + MYADDRESS) &= (0x01 << TIME_SAPI);
 				}
 				
 				uint8_t same = 1;
@@ -158,7 +159,7 @@ void MacSender(void *argument)
 				//Check if token list is different then what's in station_list already
 				for(int i = 0; i < TOKEN_DATA_SIZE; i++)
 				{
-					if(*(tokenPtr +TOKEN_DATA + i) != gTokenInterface.station_list[i])
+					if(*(tokenPtr + TOKEN_DATA + i) != gTokenInterface.station_list[i])
 					{
 							same = 0;
 					}
