@@ -111,9 +111,15 @@ void MacSender(void *argument)
 				//first byte is always 0xFF
 				*(tokenFrame) = 0xFF;
 				
-				//My station's byte has SAPIs 1 & 3 ready
+				//My station's byte has SAPIs 1 & 3 
 				//ATTENTION: BINARY WON'T WORK
-				*(tokenFrame + MYADDRESS) = 0x0A;
+
+				*(tokenFrame + MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
+					
+				if(gTokenInterface.connected)
+				{
+					*(tokenFrame + MYADDRESS) |= (0x01 << CHAT_SAPI);
+				}
 				
 				//Reuse queueMsg, adjust type and dataPtr
 				queueMsg.anyPtr = tokenFrame;
@@ -135,17 +141,45 @@ void MacSender(void *argument)
 				//point to token data
 				tokenPtr = queueMsg.anyPtr;
 				
-				//Update global array of active stations
-				memcpy(gTokenInterface.station_list,(tokenPtr+TOKEN_DATA), TOKEN_DATA_SIZE);
+				//Update MY station in the token frame anyways !
+				*(tokenPtr + MYADDRESS) = (uint8_t) (0x01 << TIME_SAPI);
+					
+				if(gTokenInterface.connected)
+				{
+					*(tokenPtr + MYADDRESS) |= (0x01 << CHAT_SAPI);
+				}
+				else
+				{
+					*(tokenPtr + MYADDRESS) &= (0x00 << CHAT_SAPI);
+				}
 				
-				//Reuse queueMsg, adjust type and dataPtr
-				queueMsg.anyPtr = NULL; //no data to be transported for the LCD
-				queueMsg.type = TOKEN_LIST;
+				uint8_t same = 1;
 				
-				//Put to LCD_R Queue, it notifies the display
-				retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
-					osWaitForever);
-			  CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				//Check if token list is different then what's in station_list already
+				for(int i = 0; i < TOKEN_DATA_SIZE; i++)
+				{
+					if(*(tokenPtr +TOKEN_DATA + i) != gTokenInterface.station_list[i])
+					{
+							same = 0;
+					}
+				}
+				
+				if(same == 0)
+				{
+					//Internal station list != token list
+					
+					//Update global array of active stations
+					memcpy(gTokenInterface.station_list,(tokenPtr+TOKEN_DATA), TOKEN_DATA_SIZE);
+					
+					//Reuse queueMsg, adjust type and dataPtr
+					queueMsg.anyPtr = NULL; //no data to be transported for the LCD
+					queueMsg.type = TOKEN_LIST;
+					
+					//Put to LCD_R Queue, it notifies the display
+					retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+						osWaitForever);
+					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+				}
 				
 				// Are there any messages in temp queue ? 
 				if(osMessageQueueGetCount(queue_macS_temp_id) > 0)
@@ -189,7 +223,7 @@ void MacSender(void *argument)
 					queueMsg.anyPtr = tokenPtr;
 					
 					//Update sapi list
-					uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr;
+					/*uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr;
 					mySapis += MYADDRESS;
 					
 					if(gTokenInterface.connected)
@@ -201,7 +235,7 @@ void MacSender(void *argument)
 					{
 						//CHAT Sapi is not available
 						*mySapis = TIME_ACTIVE;
-					}
+					}*/
 					
 					//Reinject the token
 					//We have not modified the received data
