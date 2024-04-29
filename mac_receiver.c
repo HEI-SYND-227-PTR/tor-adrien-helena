@@ -109,8 +109,6 @@ void MacReceiver(void *argument)
 		// UNWARP THE DATA...
 		//----------------------------------------------------------------------------		
 		
-		
-		
 		//Get data frame pointer, slice it into bytes
 		uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;
 		
@@ -131,11 +129,11 @@ void MacReceiver(void *argument)
 		
 		setDataFrame(&dataFrame, (uint8_t*) queueMsg.anyPtr);
 				
-		if((destination == MYADDRESS) || (destination == BROADCAST_ADDRESS))
+		if((dataFrame.destStation == MYADDRESS) || (dataFrame.destStation == BROADCAST_ADDRESS))
 		{
 			// Message is for me
 			
-			if((destination == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == checksum))
+			if((dataFrame.destStation == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == dataFrame.checksum))
 			{
 				//Checksum is correct or not needed because it's a broadcast
 				
@@ -149,7 +147,7 @@ void MacReceiver(void *argument)
 				osMessageQueueId_t msgQ_id_temp;
 				
 				//Which SAPI ?
-				switch (destSapi)
+				switch (dataFrame.destSapi)
 				{
 					//Select app queue
 					//Update queueMsg type
@@ -220,7 +218,7 @@ void MacReceiver(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}
 				
-				if(source != MYADDRESS)
+				if(dataFrame.sourceStation != MYADDRESS)
 				{
 					//Message was not from me 
 					
@@ -278,7 +276,7 @@ void MacReceiver(void *argument)
 				
 			}
 			
-			else if(source == MYADDRESS)
+			else if(dataFrame.sourceStation == MYADDRESS)
 			{
 				//Message is from me: it's a DATABACK
 				//Don't modify the data!
