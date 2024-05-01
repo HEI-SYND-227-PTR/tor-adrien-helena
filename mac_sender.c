@@ -16,7 +16,9 @@ const osMessageQueueAttr_t mac_snd_temp_attr = {
 	.name = "MAC_SENDER_TEMP"
 };
 
-
+//////////////////////////////////////////////////////////////////////////////////
+// BUILD FRAME
+//////////////////////////////////////////////////////////////////////////////////
 //TO DO: modifiy parameter to either a queueMsg ptr or just give the needed values
 uint8_t* buildFrame(const struct queueMsg_t queueMsg)
 {
@@ -76,9 +78,8 @@ void MacSender(void *argument)
 	uint8_t* copiedFramePtr; //always keep an orignal pointer, that won't be destroyed
 	
 	queue_macS_temp_id = osMessageQueueNew(TEMP_Q_SIZE,sizeof(struct queueMsg_t),&mac_snd_temp_attr);  //Temporary message queue
-	
-	
-	uint8_t sentCounter = 0; //How many times we tried to sent a msg
+		
+	uint8_t sentCounter = 0; //How many times we tried to send a msg
 	
 	//------------------------------------------------------------------------------
 	for (;;)														// loop until doomsday
@@ -93,9 +94,12 @@ void MacSender(void *argument)
 			osWaitForever); 	
     CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 		
-		switch(queueMsg.type)
+		switch(queueMsg.type)	//Test what's the type of the frame we just received
 		{
-			case (NEW_TOKEN):
+			//----------------------------------------------------------------------------
+			// ASKED FOR A NEW TOKEN
+			//----------------------------------------------------------------------------
+			case (NEW_TOKEN):	//Creat the token
 			{
 				//Inject token into ring
 				uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
@@ -132,9 +136,12 @@ void MacSender(void *argument)
 				
 			}
 			break;
+			
+			//----------------------------------------------------------------------------
+			// RECEIVED A TOKEN
+			//----------------------------------------------------------------------------
 			case (TOKEN):
 			{
-				
 				//point to token data
 				tokenPtr = queueMsg.anyPtr;
 				
@@ -152,7 +159,7 @@ void MacSender(void *argument)
 				
 				uint8_t same = 1;
 				
-				//Check if token list is different then what's in station_list already
+				//Check if token list is different then what's already in station_list
 				for(int i = 0; i < TOKEN_DATA_SIZE; i++)
 				{
 					if(*(tokenPtr + TOKEN_DATA + i) != gTokenInterface.station_list[i])
@@ -177,6 +184,7 @@ void MacSender(void *argument)
 						osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}
+				//No need to check else, because it means the list is already up to date
 				
 				// Are there any messages in temp queue ? 
 				if(osMessageQueueGetCount(queue_macS_temp_id) > 0)
@@ -237,19 +245,21 @@ void MacSender(void *argument)
 					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					
 				}
 			}
 			break;
 			
+			//----------------------------------------------------------------------------
+			// RECEIVED DATA BACK FROM OTHER STATION
+			//----------------------------------------------------------------------------
 			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
 			{
 							
-				//Was it a broadcast?
 				//Get destination
 				uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;		
 				uint8_t destination = (dataPtr[CONTROL + DESTINATION] >> SAPI_LENGTH);
 				
+				//Was it a broadcast?
 				if(destination == BROADCAST_ADDRESS)
 				{
 					//Stop sending... the broadcast has gone trough the ring
@@ -290,6 +300,14 @@ void MacSender(void *argument)
 					//Free frame from mem pool
 					osMemoryPoolFree(memPool, queueMsg.anyPtr);
 					
+					/*
+					 *   R   |   A   |   Result
+					 *   0   |   0   |   Destination station not online, so message was not acknowledge too
+					 *   0   |   1   |   No sense, station not online, but acknowledge message ??
+					 *   1   |   0   |   Send message again, message read, but error on message
+					 *   1   |   1   |   All good, message read, and no error
+					 */
+					
 					if(read == READ_SET)
 					{
 						// R = 1 : message was read
@@ -311,107 +329,107 @@ void MacSender(void *argument)
 							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-
-					}
-					else
-					{
-						//ack= 0: checksum was wrong
-						
-						sentCounter++;
-						
-						if(sentCounter == RETRY_SEND)
-						{
-							//Stop sending... it's not worth it
-							
-							
-							//Signal LCD of a MAC Error
-							char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-//							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-							strcpy(errorMsg, CRCERROR);
-							//Reuse queueMsg, adjust type and dataPtr
-							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
-							queueMsg.type = MAC_ERROR;
-				      queueMsg.addr = framePtr[SOURCE] >> SAPI_LENGTH;
-							//Put to LCD_R Queue, it notifies the display of an error
-							retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
-									osWaitForever);
-							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-
-							//Free the ORIGINAL frame pointer
-							if(framePtr != NULL)
-							{
-								osMemoryPoolFree(memPool, framePtr);
-							}
-							
-							//Reinject the token
-							queueMsg.anyPtr = tokenPtr;
-							queueMsg.type = TO_PHY;
-							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-							osWaitForever);
-							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-							
-							//Reset counter
-							sentCounter = 0;
 						}
 						else
 						{
-							//Resend copy of ORIGINAL frame pointer, not the RECEIVED frame
-							//Make a copy of build message (and keep this pointer! in case of needed resend)
-							copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
-							memcpy(copiedFramePtr, framePtr, *(framePtr + LENGTH) + DATA + STATUS_LEN);
-							
-							//Send COPY frame !
-							queueMsg.anyPtr = copiedFramePtr;
+							//ack= 0: checksum was wrong
+						
+							sentCounter++;	//Variable to know how many time we tried to send the message
+						
+							if(sentCounter == RETRY_SEND)
+							{
+								//Stop sending... it's not worth it
+								
+								//Signal LCD of a MAC Error
+								char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
+								// memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+								strcpy(errorMsg, CRCERROR);
+								//Reuse queueMsg, adjust type and dataPtr
+								queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+								queueMsg.type = MAC_ERROR;
+								queueMsg.addr = framePtr[SOURCE] >> SAPI_LENGTH;
+								//Put to LCD_R Queue, it notifies the display of an error
+								retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+									osWaitForever);
+								CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 
-							//Put into PHY_S queue
-							queueMsg.type = TO_PHY;
-							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-							osWaitForever);
-							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+								//Free the ORIGINAL frame pointer
+								if(framePtr != NULL)
+								{
+									osMemoryPoolFree(memPool, framePtr);
+								}
+								
+								//Reinject the token
+								queueMsg.anyPtr = tokenPtr;
+								queueMsg.type = TO_PHY;
+								osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+								osWaitForever);
+								CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+								
+								//Reset counter
+								sentCounter = 0;
+							}
+							else
+							{
+								//Resend copy of ORIGINAL frame pointer, not the RECEIVED frame
+								//Make a copy of build message (and keep this pointer! in case we need to send it again)
+								copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
+								memcpy(copiedFramePtr, framePtr, *(framePtr + LENGTH) + DATA + STATUS_LEN);
+								
+								//Send COPY frame !
+								queueMsg.anyPtr = copiedFramePtr;
+
+								//Put into PHY_S queue
+								queueMsg.type = TO_PHY;
+								osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+								osWaitForever);
+								CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+							}
 						}
 					}
-				}
-				else
-				{
-					// R = 0: message wasn't read
-					
-					//Stop sending... it's not worth it
-							
-					
-					//Signal LCD of a MAC Error
-					char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-					//memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-					//strcpy(errorMsg, ERRORMSG);
-					//Reuse queueMsg, adjust type and dataPtr
-					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
-					queueMsg.type = MAC_ERROR;
-					//uint8_t destination = framePtr[DESTINATION] >> SAPI_LENGTH;
-					sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",(destination+1));
-					//Reuse queueMsg, adjust type and dataPtr
-					queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
-					queueMsg.type = MAC_ERROR;
-				
-					//Put to LCD_R Queue, it notifies the display of an error
-					retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
-							osWaitForever);
-					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					//Free the ORIGINAL frame pointer
-					if(framePtr != NULL)
+					else
 					{
-						osMemoryPoolFree(memPool, framePtr);
-					}
+						// R = 0: message wasn't read
+						
+						//Stop sending... it's not worth it
+						
+						//Signal LCD of a MAC Error
+						char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
+						//memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
+						//strcpy(errorMsg, ERRORMSG);
+						//Reuse queueMsg, adjust type and dataPtr
+						queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+						queueMsg.type = MAC_ERROR;
+						//uint8_t destination = framePtr[DESTINATION] >> SAPI_LENGTH;
+						sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",(destination+1));
+						//Reuse queueMsg, adjust type and dataPtr
+						queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
+						queueMsg.type = MAC_ERROR;
 					
-					//Reinject the token
-					queueMsg.anyPtr = tokenPtr;
-					queueMsg.type = TO_PHY;
-					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
-					osWaitForever);
-					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+						//Put to LCD_R Queue, it notifies the display of an error
+						retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
+								osWaitForever);
+						CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+						//Free the ORIGINAL frame pointer
+						if(framePtr != NULL)
+						{
+							osMemoryPoolFree(memPool, framePtr);
+						}
+						
+						//Reinject the token
+						queueMsg.anyPtr = tokenPtr;
+						queueMsg.type = TO_PHY;
+						osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
+						osWaitForever);
+						CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+					}
 				}
-			}
 			}
 			break;
 			
+			//----------------------------------------------------------------------------
+			// RECEIVED DATA FROM CHAT OR TIME APPLICATION
+			//----------------------------------------------------------------------------
 			case (DATA_IND):
 			{
 				//Put into temp queue
@@ -429,21 +447,27 @@ void MacSender(void *argument)
 			}
 			break;
 			
+			//----------------------------------------------------------------------------
+			// MODIFIED WHEN WE ARE ONLINE
+			//----------------------------------------------------------------------------
 			case (START):
 			{
 					gTokenInterface.connected = true;
 			}				
 			break;
+			
+			//----------------------------------------------------------------------------
+			// MODIFIED WHEN WE ARE OFFLINE
+			//----------------------------------------------------------------------------
 			case (STOP):
 			{
 				gTokenInterface.connected = false;
 			}
 			break;
 			
-			/*
 			default:
+				
 			break;
-			*/
 		}
 	}
 }

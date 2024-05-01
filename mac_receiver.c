@@ -10,6 +10,7 @@
 #include <string.h>
 #include "main.h"
 
+//Struct with all the fields of the frame
 typedef struct DataFrame_
 {
 	//Source
@@ -33,7 +34,9 @@ typedef struct DataFrame_
 	
 } DataFrame;
 
+//////////////////////////////////////////////////////////////////////////////////
 //CHECKSUM CALCULATOR
+//////////////////////////////////////////////////////////////////////////////////
 extern uint8_t calculateChecksum(uint8_t* dataPtr)
 {
 	uint8_t checksum = 0;
@@ -46,10 +49,11 @@ extern uint8_t calculateChecksum(uint8_t* dataPtr)
 	
 	//Mask the 6 LSB
 	return checksum & LSB_MASK;
-	
 }
 
+//////////////////////////////////////////////////////////////////////////////////
 //SAPI getter
+//////////////////////////////////////////////////////////////////////////////////
 uint8_t getSapi(uint8_t controlByte)
 {
 	uint8_t sapi = controlByte & SAPI_MASK;
@@ -57,24 +61,26 @@ uint8_t getSapi(uint8_t controlByte)
 	return sapi;
 }
 
+//////////////////////////////////////////////////////////////////////////////////
 //Set DataFrame
+//////////////////////////////////////////////////////////////////////////////////
 void setDataFrame(DataFrame* dataFrame, uint8_t* anyPtr)
 {
-	//Destination
+	//Set Destination
 	dataFrame->destStation = (anyPtr[CONTROL + DESTINATION] & STATION_MASK) >> SAPI_LENGTH;
 	dataFrame->destSapi = anyPtr[CONTROL + DESTINATION] & SAPI_MASK;
 	
-	//Source
+	//Set Source
 	dataFrame->sourceStation = (anyPtr[CONTROL + SOURCE] & STATION_MASK) >> SAPI_LENGTH;
 	dataFrame->sourceSapi = anyPtr[CONTROL + SOURCE] & SAPI_MASK;
 
-	//Length 
+	//Set Length 
 	dataFrame->length = anyPtr[LENGTH];
 
-	//Data
+	//Set Data
 	dataFrame->userData = anyPtr + DATA + dataFrame->length;
 
-	//Status
+	//Set Status
 	dataFrame->checksum = (anyPtr[DATA + dataFrame->length] & CHECKSUM_MASK) >> (ACK + READ);
 	dataFrame->read = (anyPtr[DATA + dataFrame->length] & READ_SET) >> READ;
 	dataFrame->ack = anyPtr[DATA + dataFrame->length] & ACK_SET;	
@@ -103,10 +109,10 @@ void MacReceiver(void *argument)
 			NULL,
 			osWaitForever); 	
 		queueMsg.type = FROM_PHY; // msg is from PHY for MAC... not really useful here
-    CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);	// print error
+    CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);	// print error if any
 
 		//----------------------------------------------------------------------------
-		// UNWARP THE DATA...
+		// UNWRAP THE DATA...
 		//----------------------------------------------------------------------------		
 		
 		//Get data frame pointer, slice it into bytes
@@ -128,10 +134,10 @@ void MacReceiver(void *argument)
 		checksum = (checksum >> (READ + ACK));
 		
 		setDataFrame(&dataFrame, (uint8_t*) queueMsg.anyPtr);
-				
+		
 		if((dataFrame.destStation == MYADDRESS) || (dataFrame.destStation == BROADCAST_ADDRESS))
 		{
-			// Message is for me
+			// Message is for me (message directly for me, or broadcast)
 			
 			if((dataFrame.destStation == BROADCAST_ADDRESS) || (calculateChecksum(dataPtr) == dataFrame.checksum))
 			{
@@ -149,11 +155,15 @@ void MacReceiver(void *argument)
 				//Which SAPI ?
 				switch (dataFrame.destSapi)
 				{
+
+				//----------------------------------------------------------------------------
+				// CHAT SAPI								
+				//----------------------------------------------------------------------------
 					//Select app queue
 					//Update queueMsg type
 					case CHAT_SAPI:
 					{
-						if(gTokenInterface.connected)
+						if(gTokenInterface.connected) //If we are online
 						{
 							//Set received frame's ACK, READ
 							*(dataPtr + DATA + length) |= (READ_SET + ACK_SET);
@@ -171,7 +181,7 @@ void MacReceiver(void *argument)
 							queueMsg.anyPtr = userData;
 							queueMsg.addr= source;
 						}
-						else
+						else	//If we are offline
 						{
 							//CHAT Sapi is not active
 							//Leave R and ACK at 0
@@ -183,6 +193,10 @@ void MacReceiver(void *argument)
 						}
 					}
 					break;
+					
+				//----------------------------------------------------------------------------
+				// TIME SAPI								
+				//----------------------------------------------------------------------------
 					case TIME_SAPI:
 					{
 						//Modify received frame's ACK, READ
@@ -201,6 +215,10 @@ void MacReceiver(void *argument)
 						queueMsg.anyPtr = userData;
 					}
 					break;
+					
+				//----------------------------------------------------------------------------
+				// DEFAULT
+				//----------------------------------------------------------------------------
 					default:
 						// SAPI not recognized...
 						//Put directly to PHY_S
@@ -209,12 +227,11 @@ void MacReceiver(void *argument)
 					break;
 				}
 				
-				// Distribute to APP, if Sapi is really active
+				// Distribute to APP layer, if Sapi is really active
 				if(msgQ_id_temp != NULL)
 				{
-				
 					retCode = osMessageQueuePut(msgQ_id_temp, &queueMsg , osPriorityNormal,
-						osWaitForever);
+																				osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}
 				
@@ -245,9 +262,8 @@ void MacReceiver(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}			
 			}
-			else
+			else	//It was not a Broadcast, or there was an error on the checksum
 			{
-				//Data corrupted
 				// ACK = 0, R = 1 -> put into PHY_S Queue
 				
 				//Modify received frame's READ, leave ACK at 0
@@ -260,11 +276,10 @@ void MacReceiver(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 			}
 		}
-		else
+		else	//Message was not for me, nor a broadcast
 		{
-			//Message is not "really" for me
-					
-			if(dataPtr[CONTROL] == TOKEN_TAG)
+			//Maybe it was a token
+			if(dataPtr[CONTROL] == TOKEN_TAG)	
 			{
 				//It's the token
 				
@@ -275,7 +290,7 @@ void MacReceiver(void *argument)
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 			}
-			
+			//It is not a token, maybe I sent it
 			else if(dataFrame.sourceStation == MYADDRESS)
 			{
 				//Message is from me: it's a DATABACK
@@ -300,7 +315,6 @@ void MacReceiver(void *argument)
 				osPriorityNormal,
 				0);
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-	
 			}
 		}
 	}
