@@ -9,6 +9,7 @@ extern uint8_t calculateChecksum(uint8_t* dataPtr);
 
 
 const char* ERRORMSG = "MAC Error";
+const char* CRCERROR = "CRC Error\n";
 
 osMessageQueueId_t	queue_macS_temp_id;
 const osMessageQueueAttr_t mac_snd_temp_attr = {
@@ -76,8 +77,7 @@ void MacSender(void *argument)
 	
 	queue_macS_temp_id = osMessageQueueNew(TEMP_Q_SIZE,sizeof(struct queueMsg_t),&mac_snd_temp_attr);  //Temporary message queue
 	
-	bool gotToken = false;
-	bool waitDataback = false; //when WE are the source and wait for a response
+	
 	uint8_t sentCounter = 0; //How many times we tried to sent a msg
 	
 	//------------------------------------------------------------------------------
@@ -100,7 +100,6 @@ void MacSender(void *argument)
 				//Inject token into ring
 				uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
 				
-				gotToken = true;
 				//insert data into token frame
 				for(int i = 0; i < TOKENSIZE - 2; i++)
 				{
@@ -131,13 +130,10 @@ void MacSender(void *argument)
 					osWaitForever);
 			  CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
-				gotToken = false;
 			}
 			break;
 			case (TOKEN):
 			{
-				// Got the token
-				gotToken = true;
 				
 				//point to token data
 				tokenPtr = queueMsg.anyPtr;
@@ -212,9 +208,6 @@ void MacSender(void *argument)
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 					
-					//Wait for response
-					waitDataback = true;
-					
 				}
 				else
 				{
@@ -245,9 +238,6 @@ void MacSender(void *argument)
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 					
-					//Reset
-					waitDataback = false;
-					gotToken= false;
 				}
 			}
 			break;
@@ -279,7 +269,6 @@ void MacSender(void *argument)
 					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					gotToken = false;
 				}
 				else
 				{
@@ -322,9 +311,7 @@ void MacSender(void *argument)
 							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-							
-							waitDataback = false;
-							gotToken= false;
+
 					}
 					else
 					{
@@ -340,7 +327,7 @@ void MacSender(void *argument)
 							//Signal LCD of a MAC Error
 							char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
 //							memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-								strcpy(errorMsg, ERRORMSG);
+							strcpy(errorMsg, CRCERROR);
 							//Reuse queueMsg, adjust type and dataPtr
 							queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 							queueMsg.type = MAC_ERROR;
@@ -362,7 +349,6 @@ void MacSender(void *argument)
 							osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 							CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-							gotToken = false;
 							
 							//Reset counter
 							sentCounter = 0;
@@ -421,7 +407,6 @@ void MacSender(void *argument)
 					osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
-					gotToken = false;
 				}
 			}
 			}
