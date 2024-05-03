@@ -19,28 +19,27 @@ const osMessageQueueAttr_t mac_snd_temp_attr = {
 //////////////////////////////////////////////////////////////////////////////////
 // BUILD FRAME
 //////////////////////////////////////////////////////////////////////////////////
-//TO DO: modifiy parameter to either a queueMsg ptr or just give the needed values
-uint8_t* buildFrame(const struct queueMsg_t queueMsg)
+uint8_t* buildFrame(const struct queueMsg_t* queueMsg)
 {
 	// Get some memory space
 	uint8_t* framePtr = osMemoryPoolAlloc(memPool,osWaitForever);
 	
 	// Set source station
 	uint8_t source = 0;
-	source = ((MYADDRESS << SAPI_LENGTH)| queueMsg.sapi);
+	source = ((MYADDRESS << SAPI_LENGTH)| queueMsg->sapi);
 	*(framePtr+CONTROL+SOURCE) = source;
 	
 	//Set destination station
 	uint8_t destination = 0;
-	destination = ((queueMsg.addr << SAPI_LENGTH)| queueMsg.sapi);
+	destination = ((queueMsg->addr << SAPI_LENGTH)| queueMsg->sapi);
 	*(framePtr+CONTROL+DESTINATION) = destination;
 	
 	//Set length
-	uint8_t length = strlen(queueMsg.anyPtr);
+	uint8_t length = strlen(queueMsg->anyPtr);
 	*(framePtr+LENGTH) = length;
 	
 	//Set user data
-	memcpy((framePtr+DATA), queueMsg.anyPtr, length);
+	memcpy((framePtr+DATA), queueMsg->anyPtr, length);
 	
 	//Set status
 	uint8_t status = 0;
@@ -72,7 +71,6 @@ void MacSender(void *argument)
 	osStatus_t retCode;								// return error code
 	char * tokenPtr;
 	
-//	uint8_t* tokenFrame = osMemoryPoolAlloc(memPool, osWaitForever); // where the token will be saved temporarily
 	uint8_t* framePtr; // where the sent frame is saved until ACK = 1 and R = 1
 	uint8_t* copiedFramePtr; //always keep an orignal pointer, that won't be destroyed
 	
@@ -93,7 +91,8 @@ void MacSender(void *argument)
 			osWaitForever); 	
     CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 		
-		switch(queueMsg.type)	//Test what's the type of the frame we just received
+		//Test what's the type of the frame we just received
+		switch(queueMsg.type)	
 		{
 			//----------------------------------------------------------------------------
 			// ASKED FOR A NEW TOKEN
@@ -141,7 +140,7 @@ void MacSender(void *argument)
 			//----------------------------------------------------------------------------
 			case (TOKEN):
 			{
-				//point to token data
+				//Point to token data
 				tokenPtr = queueMsg.anyPtr;
 				
 				//Update MY station in the token frame anyways !
@@ -197,7 +196,7 @@ void MacSender(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 					
 					//Build new frame in new mem block, keep this one to make copies!
-					framePtr = buildFrame(queueMsg);
+					framePtr = buildFrame(&queueMsg);
 					
 					//Free old mem block
 					osMemoryPoolFree(memPool,queueMsg.anyPtr);
@@ -223,21 +222,6 @@ void MacSender(void *argument)
 					//Repoint to token with anyPtr
 					queueMsg.anyPtr = tokenPtr;
 					
-					//Update sapi list
-					/*uint8_t* mySapis = (uint8_t*) queueMsg.anyPtr;
-					mySapis += MYADDRESS;
-					
-					if(gTokenInterface.connected)
-					{
-						//CHAT Sapi is available
-							*mySapis = CHAT_TIME_ACTIVE; 
-					}
-					else
-					{
-						//CHAT Sapi is not available
-						*mySapis = TIME_ACTIVE;
-					}*/
-					
 					//Reinject the token
 					//We have not modified the received data
 					queueMsg.type = TO_PHY;
@@ -251,8 +235,9 @@ void MacSender(void *argument)
 			//----------------------------------------------------------------------------
 			// RECEIVED DATA BACK FROM OTHER STATION
 			//----------------------------------------------------------------------------
-			case (DATABACK): //When WE are the sender and get an ACK, NACK or R, NR.. !
+			case (DATABACK): 
 			{
+				//When WE are the sender and get an ACK, NACK or R, NR.. !
 							
 				//Get destination
 				uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;		
@@ -283,6 +268,14 @@ void MacSender(void *argument)
 				{
 					//It wasn't a broadcast
 					
+					/*
+					 *   R   |   A   |   Result
+					 *   0   |   0   |   Destination station not online, so message was not acknowledge too
+					 *   0   |   1   |   No sense, station not online, but acknowledge message ??
+					 *   1   |   0   |   Send message again, message read, but error on message
+					 *   1   |   1   |   All good, message read, and no error
+					 */
+					
 					//ACK ? READ ? 
 					uint8_t* status = (uint8_t*) queueMsg.anyPtr;
 				
@@ -298,14 +291,6 @@ void MacSender(void *argument)
 					
 					//Free frame from mem pool
 					osMemoryPoolFree(memPool, queueMsg.anyPtr);
-					
-					/*
-					 *   R   |   A   |   Result
-					 *   0   |   0   |   Destination station not online, so message was not acknowledge too
-					 *   0   |   1   |   No sense, station not online, but acknowledge message ??
-					 *   1   |   0   |   Send message again, message read, but error on message
-					 *   1   |   1   |   All good, message read, and no error
-					 */
 					
 					if(read == READ_SET)
 					{
@@ -341,12 +326,13 @@ void MacSender(void *argument)
 								
 								//Signal LCD of a MAC Error
 								char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-								// memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
 								strcpy(errorMsg, CRCERROR);
+								
 								//Reuse queueMsg, adjust type and dataPtr
 								queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 								queueMsg.type = MAC_ERROR;
 								queueMsg.addr = framePtr[SOURCE] >> SAPI_LENGTH;
+								
 								//Put to LCD_R Queue, it notifies the display of an error
 								retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
 									osWaitForever);
@@ -371,6 +357,7 @@ void MacSender(void *argument)
 							else
 							{
 								//Resend copy of ORIGINAL frame pointer, not the RECEIVED frame
+								
 								//Make a copy of build message (and keep this pointer! in case we need to send it again)
 								copiedFramePtr = osMemoryPoolAlloc(memPool, osWaitForever);
 								memcpy(copiedFramePtr, framePtr, *(framePtr + LENGTH) + DATA + STATUS_LEN);
@@ -394,13 +381,12 @@ void MacSender(void *argument)
 						
 						//Signal LCD of a MAC Error
 						char* errorMsg = osMemoryPoolAlloc(memPool,osWaitForever);
-						//memcpy(errorMsg, ERRORMSG, strlen(ERRORMSG));
-						//strcpy(errorMsg, ERRORMSG);
+						
 						//Reuse queueMsg, adjust type and dataPtr
 						queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 						queueMsg.type = MAC_ERROR;
-						//uint8_t destination = framePtr[DESTINATION] >> SAPI_LENGTH;
 						sprintf(errorMsg,"Error :\r\nStation %d doesn't exist !\r\n",(destination+1));
+						
 						//Reuse queueMsg, adjust type and dataPtr
 						queueMsg.anyPtr = errorMsg; //no data to be transported for the LCD
 						queueMsg.type = MAC_ERROR;
@@ -409,6 +395,7 @@ void MacSender(void *argument)
 						retCode = osMessageQueuePut(queue_lcd_id, &queueMsg, osPriorityNormal,
 								osWaitForever);
 						CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
+						
 						//Free the ORIGINAL frame pointer
 						if(framePtr != NULL)
 						{
@@ -432,9 +419,10 @@ void MacSender(void *argument)
 			case (DATA_IND):
 			{
 				//Put into temp queue
-				//Temp queue is BIGGER
+				
 				//Temp queue contains only the raw data
 				
+				//To avoid mempool overload, put wait at 0 !
 				retCode = osMessageQueuePut(queue_macS_temp_id, &queueMsg , osPriorityNormal,
 					0);
 				if(retCode != osOK)
@@ -465,7 +453,7 @@ void MacSender(void *argument)
 			break;
 			
 			default:
-				
+				//Do nothing...
 			break;
 		}
 	}
