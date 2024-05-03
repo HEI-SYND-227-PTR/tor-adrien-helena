@@ -15,13 +15,21 @@ The project was modified by **Helena Syrbe** and **Adrien Bellon**, in order to 
 The MAC layer serves as intermediary between the PHYSICAL layer and the APPLICATION layer.
 
 The MAC Sender:
+
 -> Manages the token: it can create it, keep it and push it back into the ring.
+
 -> Creates data frames with user data: adds source/destination addresses of station and SAPI, calculates the checksum.
+
 -> Handles retransmission of data frames in case of transmission problems.
 
 The MAC Receiver:
--> Identifies source of a data frame: 
-    if it's for its own station, it will go further with the data frame.
-    else it will pass the data frame directly back into the token ring through its PHYSICAL layer.
+
+-> Identifies source of a data frame:
+    
+if it's for its own station, it will go further with the data frame.
+    
+else it will pass the data frame directly back into the token ring through its PHYSICAL layer.
+
 -> Controls the checksum of a data frame.
+
 -> Extracts the source SAPI and delivers the user data to the right application.
