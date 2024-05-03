@@ -118,21 +118,6 @@ void MacReceiver(void *argument)
 		//Get data frame pointer, slice it into bytes
 		uint8_t* dataPtr = (uint8_t*) queueMsg.anyPtr;
 		
-		//Get destination
-		uint8_t destination = dataPtr[CONTROL + DESTINATION];
-		destination = (destination >> SAPI_LENGTH);
-		
-		//Get source
-		uint8_t source = dataPtr[CONTROL + SOURCE];
-		source = (source >> SAPI_LENGTH);
-		
-		//Get nb of bytes of data
-		uint8_t length = dataPtr[LENGTH];
-		
-		//Get checksum of frame
-		uint8_t checksum = dataPtr[DATA + length];
-		checksum = (checksum >> (READ + ACK));
-		
 		setDataFrame(&dataFrame, (uint8_t*) queueMsg.anyPtr);
 		
 		if((dataFrame.destStation == MYADDRESS) || (dataFrame.destStation == BROADCAST_ADDRESS))
@@ -155,31 +140,30 @@ void MacReceiver(void *argument)
 				//Which SAPI ?
 				switch (dataFrame.destSapi)
 				{
-
-				//----------------------------------------------------------------------------
-				// CHAT SAPI								
-				//----------------------------------------------------------------------------
 					//Select app queue
 					//Update queueMsg type
+					
+					//----------------------------------------------------------------------------
+					// CHAT SAPI								
+					//----------------------------------------------------------------------------
 					case CHAT_SAPI:
 					{
 						if(gTokenInterface.connected) //If we are online
 						{
 							//Set received frame's ACK, READ
-							*(dataPtr + DATA + length) |= (READ_SET + ACK_SET);
+							*(dataPtr + DATA + dataFrame.length) |= (READ_SET + ACK_SET);
 							
 							//Allocate new memory for the user data
 							userData = osMemoryPoolAlloc(memPool, osWaitForever);
 				
 							//Transit the raw data into new mem block
-							memcpy(userData, dataPtr+DATA, length);
+							memcpy(userData, dataPtr+DATA, dataFrame.length);
 							//Don't forget terminating char
-							*(userData+length) = 0;
+							*(userData+ dataFrame.length) = 0;
 							
 							msgQ_id_temp = queue_chatR_id;
 							queueMsg.type = DATA_IND;
 							queueMsg.anyPtr = userData;
-							queueMsg.addr= source;
 						}
 						else	//If we are offline
 						{
@@ -188,27 +172,26 @@ void MacReceiver(void *argument)
 							
 							//Send directly to PHY_S queue
 							//Don't modify the frame's ACK, READ
-							msgQ_id_temp = NULL;
-							
+							msgQ_id_temp = NULL;				
 						}
 					}
 					break;
 					
-				//----------------------------------------------------------------------------
-				// TIME SAPI								
-				//----------------------------------------------------------------------------
-					case TIME_SAPI:
+					//----------------------------------------------------------------------------
+					// TIME SAPI								
+					//----------------------------------------------------------------------------
+					case TIME_SAPI: 
 					{
 						//Modify received frame's ACK, READ
-						*(dataPtr + DATA + length) |= (READ_SET + ACK_SET);
+						*(dataPtr + DATA + dataFrame.length) |= (READ_SET + ACK_SET);
 
 						//Allocate new memory for the user data
 						userData = osMemoryPoolAlloc(memPool, osWaitForever);
 				
 						//Transit the raw data into new mem block
-						memcpy(userData, dataPtr+DATA, length);
+						memcpy(userData, dataPtr+DATA, dataFrame.length);
 						//Don't forget terminating char
-						*(userData+length) = 0;
+						*(userData+ dataFrame.length) = 0;
 						
 						msgQ_id_temp = queue_timeR_id;
 						queueMsg.type = DATA_IND;
@@ -216,14 +199,15 @@ void MacReceiver(void *argument)
 					}
 					break;
 					
-				//----------------------------------------------------------------------------
-				// DEFAULT
-				//----------------------------------------------------------------------------
+					//----------------------------------------------------------------------------
+					// DEFAULT
+					//----------------------------------------------------------------------------
 					default:
+					{
 						// SAPI not recognized...
 						//Put directly to PHY_S
 						msgQ_id_temp = NULL;
-						
+					}
 					break;
 				}
 				
@@ -235,13 +219,15 @@ void MacReceiver(void *argument)
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}
 				
+				//Original frame with R and A modified
+				queueMsg.anyPtr = dataPtr; 
+				
 				if(dataFrame.sourceStation != MYADDRESS)
 				{
 					//Message was not from me 
 					
 					//Send same frame back to PHY_S, so the source gets DATABACK
-					queueMsg.type = TO_PHY;
-					queueMsg.anyPtr = dataPtr; //With R and A modified...
+					queueMsg.type = TO_PHY;			
 							
 					retCode = osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
@@ -253,47 +239,46 @@ void MacReceiver(void *argument)
 					
 					//Send same frame back to MAC_S, myself gets DATABACK
 					queueMsg.type = DATABACK;
-					queueMsg.anyPtr = dataPtr; //With R and A modified...
-					
-					//If it was a broadcast, force R,A = 1
 					
 					retCode = osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
 							osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				}			
 			}
-			else	//It was not a Broadcast, or there was an error on the checksum
+			else	
 			{
-				// ACK = 0, R = 1 -> put into PHY_S Queue
+				//It was not a Broadcast, or there was an error on the checksum
 				
-				//Modify received frame's READ, leave ACK at 0
+				//ACK = 0, R = 1 -> put into PHY_S Queue
 				queueMsg.type = TO_PHY;
-				*(dataPtr + DATA + length) |= (READ_SET);
+				*(dataPtr + DATA + dataFrame.length) |= (READ_SET);
 				
-				//Send frame directly back to source
+				//Send frame directly back to PHY_S
 				retCode = osMessageQueuePut(queue_phyS_id, &queueMsg , osPriorityNormal,
 						osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 			}
 		}
-		else	//Message was not for me, nor a broadcast
+		else
 		{
-			//Maybe it was a token
+			
+			//Message was not for me, nor a broadcast
+	
 			if(dataPtr[CONTROL] == TOKEN_TAG)	
 			{
 				//It's the token
 				
 				//Give the token to MAC_Sender
 				queueMsg.type = TOKEN;
-				osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
+				retCode = osMessageQueuePut(queue_macS_id, &queueMsg , osPriorityNormal,
 					osWaitForever);
 				CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
 				
 			}
-			//It is not a token, maybe I sent it
 			else if(dataFrame.sourceStation == MYADDRESS)
 			{
 				//Message is from me: it's a DATABACK
+				
 				//Don't modify the data!
 				//Don't check the checksum...
 				
@@ -306,7 +291,7 @@ void MacReceiver(void *argument)
 			else
 			{
 				//Message is for another station
-				
+			
 				// Put into PHY SENDER queue
 				queueMsg.type = TO_PHY;
 				retCode = osMessageQueuePut(

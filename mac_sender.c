@@ -69,7 +69,6 @@ uint8_t* buildFrame(const struct queueMsg_t queueMsg)
 void MacSender(void *argument)
 {
 	struct queueMsg_t queueMsg;				// queue message
-	char * stringPtr;									// string to send pointer
 	osStatus_t retCode;								// return error code
 	char * tokenPtr;
 	
@@ -192,7 +191,7 @@ void MacSender(void *argument)
 					//Yes, there are messages in temp queue
 					retCode = osMessageQueueGet( 	
 					queue_macS_temp_id,
-					&queueMsg,
+					&queueMsg, 
 					NULL,
 					osWaitForever);
 					CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);
